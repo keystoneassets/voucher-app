@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Keystone Asset Management — Voucher App</title>
+
+<!-- Libraries -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+  :root{
+    --bg:#f4f7fb; --card:#fff; --muted:#6b7280; --accent:#0b69ff; --border:#e6eef8;
+  }
+  html,body{height:100%}
+  body{font-family:Inter,system-ui,Arial,sans-serif;background:var(--bg);margin:18px;color:#111; -webkit-font-smoothing:antialiased}
+  .topbar{max-width:1100px;margin:0 auto 12px;display:flex;justify-content:space-between;align-items:center}
+  .wrap{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:1fr 360px;gap:18px}
+  .card{background:var(--card);padding:16px;border-radius:10px;border:1px solid #e9eef6;box-shadow:0 6px 20px rgba(2,6,23,0.03)}
+  h1{margin:0;font-size:20px}
+  label{display:block;margin-top:10px;font-weight:600;font-size:13px}
+  input,select,textarea{width:100%;padding:9px;border-radius:8px;border:1px solid #dbe6f0;margin-top:6px;box-sizing:border-box;font-size:14px;background:#fff}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .actions{display:flex;gap:8px;margin-top:12px}
+  button{background:var(--accent);color:#fff;border:none;padding:10px 12px;border-radius:8px;cursor:pointer;font-weight:600}
+  button.ghost{background:#fff;color:var(--accent);border:1px solid var(--accent)}
+  .small{font-size:13px;color:var(--muted);margin-top:8px}
+  .right-col{position:sticky;top:18px;height:max-content}
+  .qr-box{margin-top:12px;padding:12px;border:1px dashed #e2e8f0;border-radius:8px;text-align:center;background:#fbfdff}
+  .qr-box img{width:200px;height:200px;object-fit:contain;border-radius:6px}
+  .history{max-height:360px;overflow:auto;margin-top:12px}
+  .history .item{padding:8px;border-radius:6px;border:1px solid #eef5fb;background:#fbfdff;margin-bottom:8px}
+  table.history-table{width:100%;border-collapse:collapse;margin-top:10px}
+  table.history-table th, table.history-table td{padding:8px;border:1px solid #eef5fb;font-size:13px;text-align:left}
+  .controls{display:flex;gap:8px}
+  /* Dark */
+  body.dark{background:#071225;color:#dceefe}
+  body.dark .card{background:#07182a;border-color:#102033}
+  body.dark input, body.dark select, body.dark textarea{background:#071a2a;color:#dceefe;border-color:#12314a}
+  body.dark .qr-box{background:#081827;border-color:#12314a}
+  footer{max-width:1100px;margin:18px auto;color:#666;font-size:13px;text-align:center}
+  a.small-link{color:var(--accent);text-decoration:none}
+  @media (max-width:950px){
+    .wrap{grid-template-columns:1fr; padding:8px}
+    .right-col{position:static}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <h1>Keystone Asset Management LLP</h1>
+    <div class="small">Phone: 7356221415</div>
+  </div>
+  <div class="controls">
+    <button onclick="toggleDark()" class="ghost">Toggle Dark</button>
+    <button onclick="clearAll()" class="ghost">Clear Saved</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <!-- LEFT: Form + Summary Table -->
+  <div class="card">
+    <h2 style="margin:0 0 8px 0">Booking Voucher</h2>
+
+    <label>Voucher No</label>
+    <input id="voucherNo" readonly />
+
+    <label>Property</label>
+    <select id="property">
+      <option>Genisis Nature by Keystone</option>
+      <option>Aster Suite by Keystone</option>
+      <option>Aster Corporate Suite by Keystone</option>
+    </select>
+
+    <label>Guest Name</label>
+    <input id="guestName" type="text" placeholder="Guest full name" />
+
+    <label>Guest ID No (Aadhaar/Passport/DL)</label>
+    <input id="guestId" type="text" placeholder="ID number" />
+
+    <div class="grid2">
+      <div>
+        <label>Check-in Date</label>
+        <input id="checkIn" type="date" />
+      </div>
+      <div>
+        <label>Check-out Date</label>
+        <input id="checkOut" type="date" />
+      </div>
+    </div>
+
+    <label>No. of Guests</label>
+    <input id="guestCount" type="number" min="1" value="1" />
+
+    <div class="grid2">
+      <div>
+        <label>Price Per Day (₹)</label>
+        <input id="pricePerDay" type="number" min="0" oninput="calcTotal()" />
+      </div>
+      <div>
+        <label>Total Price (₹)</label>
+        <input id="totalPrice" readonly />
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button onclick="saveVoucher()">Save Voucher</button>
+      <button onclick="generatePDF()">Generate PDF</button>
+      <button onclick="renderTableDownload()" class="ghost" style="background:#fff;color:#333;border:1px solid #ddd">Export Excel</button>
+    </div>
+
+    <h3 style="margin-top:14px">Saved Vouchers (table)</h3>
+    <div style="overflow:auto;max-height:280px">
+      <table class="history-table" id="vTable">
+        <thead>
+          <tr>
+            <th>Voucher No</th><th>Property</th><th>Guest</th><th>Check-in</th><th>Check-out</th><th>Total(₹)</th>
+          </tr>
+        </thead>
+        <tbody id="vTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- RIGHT: QR and Master Excel controls -->
+  <div class="card right-col">
+    <h3 style="margin:0 0 6px 0">Scan to Pay (UPI)</h3>
+
+    <label>UPI ID (payee)</label>
+    <input id="upiId" value="yourupi@bank" />
+
+    <label>Fixed Amount (₹) — prefixed</label>
+    <input id="qrAmount" type="number" min="0" placeholder="Enter fixed amount" />
+
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button onclick="generateUPIQR()">Generate QR</button>
+      <button onclick="clearQR()" class="ghost">Clear</button>
+    </div>
+
+    <div class="qr-box" id="qrBox" style="margin-top:12px">
+      <img id="qrImg" src="" alt="QR will appear here" />
+      <div id="qrLabel" class="small" style="margin-top:8px">QR shows amount prefixed (if generated)</div>
+    </div>
+
+    <h4 style="margin-top:12px">Master Excel</h4>
+    <div class="small">Master Excel holds all saved vouchers (one file). Use the button below to download or save to a Drive-synced folder.</div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button onclick="downloadMasterExcel()">Download Master Excel</button>
+      <button onclick="openMasterExcelFolder()" class="ghost">Choose Folder (optional)</button>
+    </div>
+
+    <div style="margin-top:12px">
+      <button onclick="renderTableDownload()" class="ghost" style="width:100%;background:#fff;border:1px solid #ddd">Download (quick)</button>
+    </div>
+
+  </div>
+</div>
+
+<footer>
+  <div>Hosted via GitHub Pages — you can update this file via your repo <a class="small-link" href="https://github.com/Keystoneassets/voucher-app" target="_blank">Keystoneassets/voucher-app</a>.</div>
+</footer>
+
+<script>
+/* ===================== Utilities & Init ===================== */
+const MASTER_KEY = 'voucher_master_xlsx_base64';
+
+function toggleDark(){ document.body.classList.toggle('dark'); localStorage.setItem('darkMode', document.body.classList.contains('dark') ? '1':'0'); }
+if(localStorage.getItem('darkMode')==='1') document.body.classList.add('dark');
+
+function loadNextVoucher(){ const last = localStorage.getItem('lastVoucher') || '1000'; document.getElementById('voucherNo').value = 'VCH-' + (parseInt(last,10) + 1); }
+loadNextVoucher();
+
+function escapeHtml(s){ if(s===null||s===undefined) return ''; return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+/* ===================== Total Calculation ===================== */
+function calcTotal(){
+  const price = parseFloat(document.getElementById('pricePerDay').value) || 0;
+  const inVal = document.getElementById('checkIn').value;
+  const outVal = document.getElementById('checkOut').value;
+  if(!inVal || !outVal){ document.getElementById('totalPrice').value = ''; return; }
+  const inD = new Date(inVal), outD = new Date(outVal);
+  let days = Math.round((outD - inD)/(1000*60*60*24));
+  if(days <= 0) days = 1; // same-day = 1 night
+  const total = days * price;
+  document.getElementById('totalPrice').value = isFinite(total) ? total.toFixed(2) : '';
+}
+['checkIn','checkOut','pricePerDay'].forEach(id=>{ const el=document.getElementById(id); if(el) el.addEventListener('input',calcTotal); });
+
+/* ===================== History UI ===================== */
+function renderHistory(){
+  const arr = JSON.parse(localStorage.getItem('vouchers')||'[]');
+  const container = document.getElementById('historyList');
+  if(container) container.innerHTML = '';
+  renderTable(); // update table
+}
+function renderTable(){
+  const arr = JSON.parse(localStorage.getItem('vouchers')||'[]');
+  const tbody = document.getElementById('vTableBody');
+  tbody.innerHTML = '';
+  for(let i=0;i<arr.length;i++){
+    const r = arr[i];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${escapeHtml(r.voucherNo)}</td><td>${escapeHtml(r.property)}</td><td>${escapeHtml(r.guestName)}</td><td>${escapeHtml(r.checkIn)}</td><td>${escapeHtml(r.checkOut)}</td><td style="text-align:right">${escapeHtml(r.totalPrice)}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+renderHistory();
+
+/* ===================== Save Voucher & Master Workbook ===================== */
+function saveVoucher(){
+  calcTotal();
+  const v = {
+    voucherNo: document.getElementById('voucherNo').value,
+    property: document.getElementById('property').value,
+    guestName: document.getElementById('guestName').value,
+    guestId: document.getElementById('guestId').value,
+    checkIn: document.getElementById('checkIn').value,
+    checkOut: document.getElementById('checkOut').value,
+    guestCount: document.getElementById('guestCount').value,
+    pricePerDay: document.getElementById('pricePerDay').value,
+    totalPrice: document.getElementById('totalPrice').value,
+    createdAt: new Date().toISOString()
+  };
+
+  // Save JSON history
+  const arr = JSON.parse(localStorage.getItem('vouchers')||'[]');
+  arr.push(v);
+  localStorage.setItem('vouchers', JSON.stringify(arr));
+  localStorage.setItem('lastVoucher', (v.voucherNo.replace(/^VCH-?/,'') ));
+  // Append to master workbook stored in localStorage
+  appendVoucherToMasterWorkbook(v);
+  alert('Saved locally and added to Master Excel (in browser storage).');
+  renderHistory();
+  loadNextVoucher();
+}
+
+/* Append to master workbook saved as base64 in localStorage */
+function appendVoucherToMasterWorkbook(v){
+  const existing = localStorage.getItem(MASTER_KEY);
+  let wb;
+  if(existing){
+    const binary = atob(existing);
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for(let i=0;i<len;i++) bytes[i] = binary.charCodeAt(i);
+    wb = XLSX.read(bytes, { type: 'array' });
+  } else {
+    wb = XLSX.utils.book_new();
+    const header = [["Voucher No","Property","Guest Name","Guest ID","Check-In","Check-Out","Guests","Price/Day","Total Price","CreatedAt"]];
+    const ws = XLSX.utils.aoa_to_sheet(header);
+    XLSX.utils.book_append_sheet(wb, ws, "Vouchers");
+  }
+
+  let ws = wb.Sheets["Vouchers"];
+  if(!ws){
+    ws = XLSX.utils.aoa_to_sheet([["Voucher No","Property","Guest Name","Guest ID","Check-In","Check-Out","Guests","Price/Day","Total Price","CreatedAt"]]);
+    XLSX.utils.book_append_sheet(wb, ws, "Vouchers");
+  }
+
+  const newRow = [v.voucherNo, v.property, v.guestName, v.guestId, v.checkIn, v.checkOut, v.guestCount, v.pricePerDay, v.totalPrice, v.createdAt];
+  XLSX.utils.sheet_add_aoa(ws, [newRow], { origin: -1 });
+
+  const wbout = XLSX.write(wb, { bookType: "xlsx", type: "base64" });
+  localStorage.setItem(MASTER_KEY, wbout);
+}
+
+/* ===================== Download Master Excel (Option B behavior) ===================== */
+async function downloadMasterExcel(){
+  const base64 = localStorage.getItem(MASTER_KEY);
+  if(!base64){ alert("No master excel found. Save at least one voucher first."); return; }
+  const binary = atob(base64);
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for(let i=0;i<len;i++) bytes[i] = binary.charCodeAt(i);
+  const blob = new Blob([bytes.buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+
+  // File System Access API: let user pick folder and save file there (Chrome/Edge)
+  if(window.showSaveFilePicker){
+    try{
+      const opts = {
+        suggestedName: 'vouchers_master.xlsx',
+        types: [{
+          description: 'Excel file',
+          accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+        }]
+      };
+      const handle = await window.showSaveFilePicker(opts);
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      alert('Master Excel saved to chosen folder.');
+      return;
+    }catch(err){
+      console.error('SaveFilePicker error:', err);
+      // fallback to download
+    }
+  }
+
+  // Fallback: browser download (Downloads)
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'vouchers_master.xlsx';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/* Quick download using SheetJS writeFile (convenience) */
+function renderTableDownload(){
+  const base64 = localStorage.getItem(MASTER_KEY);
+  if(!base64){ alert("No master excel found. Save at least one voucher first."); return; }
+  const binary = atob(base64);
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for(let i=0;i<len;i++) bytes[i] = binary.charCodeAt(i);
+  const wb = XLSX.read(bytes, { type: 'array' });
+  XLSX.writeFile(wb, 'vouchers_master.xlsx');
+}
+
+/* Choose folder helper (just info; real save happens in downloadMasterExcel) */
+async function openMasterExcelFolder(){
+  if(window.showDirectoryPicker){
+    try{
+      const dirHandle = await window.showDirectoryPicker();
+      alert('Folder selected. You can save the master Excel there using "Download Master Excel".');
+    }catch(e){
+      console.error(e);
+    }
+  }else{
+    alert('Your browser does not support a folder picker. Use "Download Master Excel" to choose a save location.');
+  }
+}
+
+/* ===================== UPI QR (page-only) ===================== */
+function generateUPIQR(){
+  const upi = document.getElementById('upiId').value.trim();
+  const amt = parseFloat(document.getElementById('qrAmount').value) || 0;
+  if(!upi){ alert('Enter UPI ID'); return; }
+  const upiUri = `upi://pay?pa=${encodeURIComponent(upi)}&am=${encodeURIComponent(amt.toFixed(2))}&cu=INR`;
+  const chart = `https://chart.googleapis.com/chart?cht=qr&chs=300x300&chl=${encodeURIComponent(upiUri)}`;
+  document.getElementById('qrImg').src = chart;
+  document.getElementById('qrLabel').innerText = `UPI: ${upi} | Amount: ₹ ${amt.toFixed(2)}`;
+}
+function clearQR(){ document.getElementById('qrImg').src=''; document.getElementById('qrLabel').innerText='QR shows amount prefixed (if generated)'; }
+
+/* ===================== PDF generation (NO QR in PDF) ===================== */
+async function generatePDF(){
+  calcTotal();
+
+  // Build a visible clone for PDF capture (no QR included)
+  const clone = document.createElement('div');
+  clone.style.width = '794px';
+  clone.style.margin = '20px auto';
+  clone.style.background = '#fff';
+  clone.style.padding = '20px';
+  clone.style.boxSizing = 'border-box';
+  clone.style.fontFamily = 'Arial, sans-serif';
+  clone.style.color = '#111';
+  clone.style.borderRadius = '6px';
+
+  const vNo = escapeHtml(document.getElementById('voucherNo').value);
+  const property = escapeHtml(document.getElementById('property').value);
+  const guestName = escapeHtml(document.getElementById('guestName').value);
+  const guestId = escapeHtml(document.getElementById('guestId').value);
+  const checkIn = escapeHtml(document.getElementById('checkIn').value);
+  const checkOut = escapeHtml(document.getElementById('checkOut').value);
+  const guests = escapeHtml(document.getElementById('guestCount').value);
+  const pricePerDay = escapeHtml(document.getElementById('pricePerDay').value);
+  const totalPrice = escapeHtml(document.getElementById('totalPrice').value);
+
+  const html = `
+    <div style="border:1px solid #111;padding:18px;border-radius:6px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div style="font-size:18px;font-weight:700">Keystone Asset Management LLP</div>
+          <div style="margin-top:6px;color:#444">Phone: 7356221415</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-weight:700">Booking Voucher</div>
+          <div style="font-size:12px;color:#444;margin-top:6px">${(new Date()).toLocaleDateString()}</div>
+        </div>
+      </div>
+      <hr style="margin:12px 0">
+      <table style="width:100%;font-size:13px;border-collapse:collapse">
+        <tr><td style="padding:6px;font-weight:700">Voucher No:</td><td style="padding:6px">${vNo}</td></tr>
+        <tr><td style="padding:6px;font-weight:700">Property:</td><td style="padding:6px">${property}</td></tr>
+        <tr><td style="padding:6px;font-weight:700">Guest Name:</td><td style="padding:6px">${guestName}</td></tr>
+        <tr><td style="padding:6px;font-weight:700">Guest ID No:</td><td style="padding:6px">${guestId}</td></tr>
+        <tr><td style="padding:6px;font-weight:700">Check-in:</td><td style="padding:6px">${checkIn}</td></tr>
+        <tr><td style="padding:6px;font-weight:700">Check-out:</td><td style="padding:6px">${checkOut}</td></tr>
+        <tr><td style="padding:6px;font-weight:700">No. of Guests:</td><td style="padding:6px">${guests}</td></tr>
+        <tr><td style="padding:6px;font-weight:700">Price Per Day:</td><td style="padding:6px">₹ ${pricePerDay}</td></tr>
+        <tr><td style="padding:6px;font-weight:700">Total Price:</td><td style="padding:6px;font-weight:700">₹ ${totalPrice}</td></tr>
+      </table>
+      <hr style="margin:14px 0">
+      <div style="font-size:12px;color:#555;margin-top:6px">
+        This voucher confirms your booking with ${property}.<br>
+        Please present your ID at check-in.
+      </div>
+    </div>
+  `;
+
+  clone.innerHTML = html;
+  document.body.appendChild(clone);
+
+  // allow paint
+  await new Promise(r=>setTimeout(r,240));
+
+  // capture high quality
+  const canvas = await html2canvas(clone, { scale: 3, useCORS: true });
+  const imgData = canvas.toDataURL('image/png');
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF('p','pt','a4');
+  const pdfWidth = pdf.internal.pageSize.getWidth();
+  const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+  pdf.addImage(imgData,'PNG',0,0,pdfWidth,pdfHeight);
+  const filename = `${vNo || 'voucher'}.pdf`;
+  pdf.save(filename);
+
+  // cleanup
+  document.body.removeChild(clone);
+}
+
+/* ===================== Helpers: quick download / clear ===================== */
+function renderTableDownload(){
+  const base64 = localStorage.getItem(MASTER_KEY);
+  if(!base64){ alert("No master excel found. Save at least one voucher first."); return; }
+  const binary = atob(base64);
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for(let i=0;i<len;i++) bytes[i] = binary.charCodeAt(i);
+  const wb = XLSX.read(bytes, { type: 'array' });
+  XLSX.writeFile(wb, 'vouchers_master.xlsx');
+}
+
+function clearAll(){
+  if(confirm('Clear all saved vouchers and master excel?')){
+    localStorage.removeItem('vouchers');
+    localStorage.removeItem('lastVoucher');
+    localStorage.removeItem(MASTER_KEY);
+    renderHistory();
+    renderTable();
+    loadNextVoucher();
+    alert('Cleared.');
+  }
+}
+
+/* boot render of table */
+renderHistory();
+renderTable();
+
+/* ===================== End ===================== */
+</script>
+
+</body>
+</html>
